@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
@@ -46,24 +47,57 @@ public class TurnManager : MonoBehaviour
     // 回合开始：自动摸1，若手牌空再补1；清除本回合的“已过牌”
     void StartTurn()
     {
-        youPassed = false;
-        hand.DrawOneToHand();
-        if (hand.Count == 0) hand.DrawOneToHand();
-        RefreshTurnButtons();
+        if (isPlayerTurn)
+        {
+            youPassed = false;
+            hand.DrawOneToHand();
+            if (hand.Count == 0) hand.DrawOneToHand();
+            RefreshTurnButtons();
+        }
+        else
+        {
+            StartCoroutine(AITakeTurn());
+        }
     }
+
 
     // （自测）结束回合：切换 Tube 显示并立刻进入下一回合
     void EndTurn()
     {
         tubeHeldByYou = !tubeHeldByYou;
         UpdateMarkers();
+
+        isPlayerTurn = !isPlayerTurn;   // 切换到 AI
         StartTurn();
     }
+
 
     void UpdateMarkers()
     {
         tubeText.text = "Tube: " + (tubeHeldByYou ? "You" : "Other");
         boxText.text  = "Box: "  + (boxHeldByYou  ? "You" : "Other");
+    }
+    
+    IEnumerator AITakeTurn()
+    {
+        ai.DrawStartOfTurn();
+        yield return new WaitForSeconds(0.4f); // 给点节奏
+
+        var play = ai.DecidePlay();
+        if (play != null)
+        {
+            table.PlaceOnTable(play, false);  // false 表示AI打的
+            lastPlayedByYou = false;   // 最后出牌者不是你
+            Debug.Log($"AI 出牌：{play.data.displayName}");
+        }
+        else
+        {
+            Debug.Log("AI 选择 Pass");
+        }
+
+        // 回到玩家回合
+        isPlayerTurn = true;
+        StartTurn();
     }
 
     void UpdateCoinsUI() => coinsText.text = $"Coins: {coins}/10";
@@ -132,5 +166,7 @@ public class TurnManager : MonoBehaviour
         passBtn.interactable = isYourTurn && !youPassed;
         // 没有 Draw 按钮；EndTurn/EndRound 保持可用（自测）
     }
+    public AIHand ai;           // 拖 AIHand（新建空物体挂上）
+    private bool isPlayerTurn = true;   // 原先一直 true 的地方改用它
 
 }

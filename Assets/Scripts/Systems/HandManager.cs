@@ -58,7 +58,7 @@ public class HandManager : MonoBehaviour
                     var prev = table.top?.data;
                     if (RuleValidator.CanPlayAfter(prev, c.data))
                     {
-                        table.top = c;
+                        table.PlaceOnTable(c, true);   // true 表示玩家打的
                         hand.Remove(c);
                         RefreshUI();
                         Debug.Log($"Play: {c.data.displayName}");

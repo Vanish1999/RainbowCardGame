@@ -17,8 +17,6 @@ public class HandManager : MonoBehaviour
 
     void Start()
     {
-        // 起手摸4
-        DrawToHand(startHandSize);
         RefreshUI();
     }
 
@@ -63,10 +61,8 @@ public class HandManager : MonoBehaviour
                         RefreshUI();
                         Debug.Log($"Play: {c.data.displayName}");
                         turn?.NotifyYouPlayed();
-                        // 打出后若手牌空，且现在是你的回合 → 自动摸1
-
-                        bool allowAutoDraw = (turn == null) || turn.CanAutoDrawNow();
-                        if (hand.Count == 0 && allowAutoDraw)
+                        // 打出后若手牌空自动摸1
+                        if (hand.Count == 0)
                         {
                             DrawOneToHand();
                         }

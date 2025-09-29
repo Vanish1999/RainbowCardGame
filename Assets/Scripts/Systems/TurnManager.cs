@@ -9,27 +9,35 @@ public class TurnManager : MonoBehaviour
     public HandManager hand;      // 玩家
     public AIHand ai;             // AI
     public TableManager table;    // 台面
-    public DeckManager deck;      // 丢弃等（本版本仅在需要时使用）
+    public DeckManager deck;      // 弃牌（可选）
 
     [Header("HUD")]
-    public TMP_Text coinsText;    // 玩家分
-    public Button   endTurnBtn;   // “我这回合出不了了/不想出了”
+    public TMP_Text coinsText;    // 玩家 Coins 文本
+    public TMP_Text aiInfoText;   // AI 信息文本（Coins | Cards）
+    public TMP_Text resultText;   // 大字结果（你赢了/你输了）
+    public Button   endTurnBtn;   // 我退出本 turn 按钮
 
     // —— 状态 —— //
-    private bool isPlayerTurn = true;  // 当前行动者
-    private bool playerActive = true;  // 本 turn 是否还在场（未退出）
+    private bool isPlayerTurn = true;
+    private bool playerActive = true;
     private bool aiActive     = true;
-    private int  coins        = 0;     // 先只记玩家分
-    private bool firstTurn    = true;  // 首局额外发4
+    private bool firstTurn    = true;
+    private bool gameOver     = false;
+
+    private int  coins    = 0;    // 玩家金币
+    private int  aiCoins  = 0;    // AI 金币
 
     void Start()
     {
         endTurnBtn.onClick.RemoveAllListeners();
         endTurnBtn.onClick.AddListener(OnPlayerEndTurnClicked);
 
-        UpdateCoinsUI();
+        if (resultText != null) resultText.gameObject.SetActive(false);
 
-        // 开第一局：默认玩家先手（你可根据 Tube/Box 决定传 true/false）
+        UpdateCoinsUI();
+        UpdateAIUI();
+
+        // 开第一局：默认玩家先手
         StartNewTurn(starterIsPlayer: true);
     }
 
@@ -38,6 +46,8 @@ public class TurnManager : MonoBehaviour
     // 开一个“新 turn”：清台 →（首局各发4）→ 各摸1 → 进入首手
     public void StartNewTurn(bool starterIsPlayer)
     {
+        if (gameOver) return;
+
         table.ClearTable();
         playerActive = aiActive = true;
         isPlayerTurn = starterIsPlayer;
@@ -45,31 +55,32 @@ public class TurnManager : MonoBehaviour
         if (firstTurn)
         {
             hand.DrawToHand(4);
-            ai.DrawToHand(4);     // AIHand 需有 DrawToHand(n)
-            ai.DrawStartOfTurn();
-            UpdateAIInfoUI();
+            ai.DrawToHand(4);
             firstTurn = false;
         }
 
-        // 每个turn开始都各摸1（包含第一局）
+        // 每个 turn 开始都各摸 1（包含首局）
         hand.DrawOneToHand();
-        ai.DrawStartOfTurn();     // 或 ai.DrawOne();
+        ai.DrawStartOfTurn();
 
+        UpdateAIUI();
         NextActor();
     }
 
-    // 玩家点“End Turn”= 退出本 turn
+    // 玩家点“End Turn”= 我退出本 turn
     private void OnPlayerEndTurnClicked()
     {
+        if (gameOver) return;
         if (!isPlayerTurn || !playerActive) return;
         playerActive = false;
         CheckTurnWinnerOrContinue();
     }
 
-    // 由 HandManager 在玩家“出牌成功”后调用（旧名兼容）
+    // 由 HandManager 在“玩家成功出牌”后调用（兼容旧名）
     public void NotifyYouPlayed()      => NotifyPlayerPlayed();
     public void NotifyPlayerPlayed()
     {
+        if (gameOver) return;
         isPlayerTurn = false;     // 切给 AI
         NextActor();
     }
@@ -77,17 +88,19 @@ public class TurnManager : MonoBehaviour
     // 轮到当前行动者；玩家手动出，AI 自动出或退出
     private void NextActor()
     {
+        if (gameOver) return;
+
         if (isPlayerTurn && !playerActive) isPlayerTurn = false;
         if (!isPlayerTurn && !aiActive)    isPlayerTurn = true;
 
         bool playerTurnNow = isPlayerTurn && playerActive;
-        endTurnBtn.interactable = playerTurnNow;  // AI 行动时禁用按钮
+        endTurnBtn.interactable = playerTurnNow;
 
         if (playerTurnNow)
         {
-            // 玩家现在可以出牌（HandManager 按钮），
-            // 出牌成功后会回调 NotifyPlayerPlayed() 自动切到 AI
             Debug.Log("== Player plays ==");
+            // 玩家通过 HandManager 点击手牌出牌；
+            // 出牌成功后会回调 NotifyPlayerPlayed() 自动切到 AI
         }
         else
         {
@@ -101,11 +114,9 @@ public class TurnManager : MonoBehaviour
         if (ai == null || ai.deck == null || ai.table == null)
         { Debug.LogError("AI 或依赖未赋值"); yield break; }
 
-        // 思考时间（需要“立刻出”就设为 0）
-        yield return new WaitForSeconds(0.6f);
+        yield return new WaitForSeconds(0.6f); // 思考时间
 
         var play = ai.DecidePlay();
-        UpdateAIInfoUI();
         if (play != null)
         {
             table.PlaceOnTable(play, byPlayer: false);
@@ -117,16 +128,18 @@ public class TurnManager : MonoBehaviour
         }
         else
         {
-            // AI 退出本 turn → 若只剩玩家活着则玩家立刻赢
+            // AI 退出本 turn
             Debug.Log("AI Pass（退出本 turn）");
             aiActive = false;
             CheckTurnWinnerOrContinue();
         }
     }
 
-    // 判定是否只剩一人“活着”；若是→该人赢得本 turn，按顶牌价值加分→开启下一 turn（输家先手）
+    // 判定是否只剩一人“活着”；若是→该人赢得本 turn，按顶牌价值加分→开下一 turn（输家先手）
     private void CheckTurnWinnerOrContinue()
     {
+        if (gameOver) return;
+
         if (playerActive ^ aiActive)   // 恰好一方为真
         {
             bool winnerIsPlayer = playerActive;   // 还活着的就是胜者
@@ -135,15 +148,18 @@ public class TurnManager : MonoBehaviour
             if (gain > 0)
             {
                 if (winnerIsPlayer) { coins += gain; UpdateCoinsUI(); }
-                else { /* TODO: AI 的分，有需要再加 */ }
+                else                { aiCoins += gain; UpdateAIUI(); }
                 Debug.Log($"Turn Winner = {(winnerIsPlayer ? "Player" : "AI")}，+{gain}");
             }
 
-            // （可选）把顶牌丢弃后清台
+            // 丢弃顶牌并清台（可选）
             if (table.top != null) deck.Discard(table.top);
             table.ClearTable();
 
-            // 下一 turn 由胜者的右手边先手——两人=输家先手
+            // 胜负检查
+            if (CheckWin()) return;
+
+            // 下一 turn：胜者的右手边先手（两人=输家先手）
             bool nextStarterIsPlayer = !winnerIsPlayer;
             StartNewTurn(nextStarterIsPlayer);
             return;
@@ -154,14 +170,41 @@ public class TurnManager : MonoBehaviour
         NextActor();
     }
 
-    // ========= 工具 =========
+    // ========= UI & 胜负 =========
     private void UpdateCoinsUI() => coinsText.text = $"Coins: {coins}/10";
 
-    // 给 HandManager 用：只有在玩家回合仍“活着”时才允许自动补摸
-    public bool CanAutoDrawNow() => isPlayerTurn && playerActive;
-    // HUD 引用
-    public TMP_Text aiText;   // 拖 HUD/AIText
+    private void UpdateAIUI()
+    {
+        if (aiInfoText != null)
+        {
+            int cards = ai != null ? ai.Count : 0;
+            aiInfoText.text = $"AI: {aiCoins}/10 | {cards} cards";
+        }
+    }
 
-    void UpdateAIInfoUI() => aiText.text = $"AI: {ai?.Count ?? 0} cards";
+    // 返回是否已经出结果
+    private bool CheckWin()
+    {
+        if (coins >= 10) { ShowResult("You Win！"); return true; }
+        if (aiCoins >= 10) { ShowResult("You Lose！"); return true; }
+        return false;
+    }
 
+    private void ShowResult(string msg)
+    {
+        gameOver = true;
+        endTurnBtn.interactable = false;
+
+        if (resultText != null)
+        {
+            resultText.text = msg;
+            resultText.gameObject.SetActive(true);
+        }
+        Debug.Log(msg);
+        // TODO: 这里可以启用“再来一局”按钮或回主菜单
+    }
+
+    // HandManager 自动补摸时的判定
+    public bool CanAutoDrawNow() => !gameOver && isPlayerTurn && playerActive;
+    
 }

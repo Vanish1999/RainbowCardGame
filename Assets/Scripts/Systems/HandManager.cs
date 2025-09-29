@@ -163,5 +163,16 @@ public class HandManager : MonoBehaviour
         return null;
     }
     public TurnManager turn; // 把 TurnManager 拖进来
+    // —— 清空合成选择（公共方法，供回合开始/Toggle事件调用） —— //
+    public void ClearPendingCombine()
+    {
+        pending = null;
+        // （可选）如果你希望退出合成模式，也可以顺手关掉toggle：
+        // if (combineToggle != null) combineToggle.isOn = false;
+
+        // 如果你在 UI 上有“高亮已选卡”的效果，这里可以顺带刷新
+        // RefreshUI(); // 没有高亮就不必强刷
+    }
+
 
 }
